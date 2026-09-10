@@ -1,4 +1,4 @@
-"""Sports prop-bet analysis — the Playmaker tool.
+"""Playmaker — sports prop-bet analysis.
 
 Ported from Sentinel's NFL agent (which was never a standalone project — it is
 part of SONAR, the betting tool), generalised so a second sport is a registry
