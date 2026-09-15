@@ -48,6 +48,17 @@ tab rebuilt around the cross-book screen.
       Sized at the interval's low end rather than a fixed quarter, so an honest
       interval spanning break-even produces no bet.
 
+### Found while building Stage 1
+
+- [x] `P1` `testing` `@ai` **The test suite could hang forever, and did.**
+      `MainWindow.shutdown()` falls through to `QThread.terminate()`, which never
+      returns what the thread held — the GIL, or a pthread mutex. Both deadlock
+      stacks were sampled out of hung runs. Lives in SONAR's `tests/conftest.py`
+      rather than here: the network and the real data directory are closed off,
+      `PollThread.run` is a no-op for the session, `terminate()` raises instead
+      of wedging, and a faulthandler watchdog aborts with every thread's stack
+      after 120s. 15 clean runs; the suite went from 31s to 3-9s.
+
 ### Stage 2 — data
 
 - [ ] `P1` `feature` `@ai` **ESPN results adapter.** One adapter plus a league
