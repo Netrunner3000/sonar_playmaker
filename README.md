@@ -22,34 +22,54 @@ invent. Nothing here places a bet — it evaluates one.
 
 ## Under the hood
 
-Everything below — registry, arithmetic, prompt and parsing — lives in a
-single `__init__.py`; nothing here is split into separate modules yet.
+The registry, odds arithmetic, prompt and parsing live in `__init__.py`; the
+devigging and staking added in v2 are their own modules.
 
 | Location | Role |
 |---|---|
 | `Sport` / `PropType` | Frozen dataclasses describing a sport's prop types and the game-context hint shown on its form. |
 | `list_sports()` / `get_sport()` | The sport/prop-type registry. |
-| `american_to_decimal()` / `implied_probability()` / `remove_vig()` | Odds conversion and vig removal. |
+| `american_to_decimal()` / `implied_probability()` | Odds conversion. |
+| `remove_vig()` | The proportional method, kept for reference. `devig.py` is what you want. |
+| `devig.py` | Three devig methods (multiplicative, Clarke power, Shin), cross-book consensus, the outlier screen, and the price parser. |
+| `staking.py` | `Estimate` (probability + interval + source), Kelly sized at the interval's low end, and the rule that a narrative source cannot size a bet. |
 | `expected_value()` / `kelly_fraction()` / `edge_versus_market()` | The deterministic betting arithmetic. |
 | `SYSTEM_PROMPT` / `build_prompt()` | The LLM system prompt and the per-prop user message it's paired with — numbers only, no invented data. |
 | `parse_analysis()` / `Analysis` | Parses the model's response back into a structured result. |
 
-## Where the prediction comes from — and the plan to replace it
+## Where the numbers come from
 
-Today the win probability is a percentage an LLM writes in prose, which
-`parse_analysis()` scrapes out with a regex and the UI turns into a ¼-Kelly
-stake. Correct arithmetic around an unmeasured input: read `MODELS.md` before
-changing anything here. It surveys the sports models that have real track
-records — Elo with margin-of-victory, Dixon-Coles, Pythagorean expectation,
-distributional prop models — establishes that the accuracy ceiling is low and
-that the sharp closing line sits at it, and concludes that the return is in
-devig quality and cross-book price shopping rather than in a cleverer model.
-`TODO.md` carries the resulting build order.
+Read `MODELS.md` before changing anything here. It surveys the sports models
+with real track records — Elo with margin-of-victory, Dixon-Coles, Pythagorean
+expectation, distributional prop models — and reaches a conclusion that sets the
+build order: the accuracy ceiling is low, the sharp closing line sits at it, and
+the return is therefore in devig quality and cross-book price shopping rather
+than in a cleverer model. `TODO.md` carries the staged plan.
 
-One defect is live now and worth knowing before you trust a number: `remove_vig()`
-uses multiplicative normalisation, which comparative studies rank last. It
-understates favourites and overstates longshots, so reported longshot edges are
-inflated (`MODELS.md` §7).
+**A language model's percentage no longer sizes anything.** It used to: the UI
+scraped a figure out of prose with a regex and computed a ¼-Kelly stake from it.
+`staking.Estimate` now carries a source and an interval with every probability,
+and `staking.kelly()` returns zero for a narrative source no matter how
+confident the prose sounded. The LLM read is shown beside the numbers as
+commentary.
+
+**Both sides of a market are required.** A margin is how far a market's prices
+sum past certainty, so a single price cannot reveal one — `-110` alone is
+equally consistent with a juiced coin flip and with a genuine 52.4% favourite at
+no margin. The form asked for one price for years, which is why nothing
+downstream of it could have been right (`MODELS.md` §7a).
+
+## The cross-book screen
+
+The one approach here with a published track record. Kaunitz, Zhong & Kreiner
+(2017) did not forecast anything — they devigged many books' prices for the same
+market, took the consensus, and bet only where one book was an outlier against
+it. Paste three or more books into the tab and `devig.screen()` runs that
+arithmetic, computing each row's consensus with that row's own book left out so
+a price cannot vote for itself.
+
+Their other finding belongs next to it and is recorded in the module: the books
+limited the winning accounts. The edge is real and the capacity is small.
 
 ## Requirements
 

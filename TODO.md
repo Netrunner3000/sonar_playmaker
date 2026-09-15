@@ -20,24 +20,33 @@
 ## v2 — rebuilding the prediction
 
 Planned from `MODELS.md`, which surveys the models with real track records and
-sets the build order (§11). Nothing below is started.
+sets the build order (§11). Stage 1 is done; Stage 2 is next and needs no key.
 
-### Stage 1 — fix what is provably wrong (no data, no model)
+### Stage 1 — fix what is provably wrong (no data, no model) — **done**
 
-- [ ] `P1` `bug` `@ai` **Replace multiplicative vig removal.** `remove_vig()`
-      uses the method that comparative studies rank *last*; it understates
-      favourites and overstates longshots, so every longshot edge Playmaker
-      reports today is inflated. Add Shin's iterative solve and Clarke's power
-      method, default to the better one. `MODELS.md` §7.
-- [ ] `P1` `feature` `@ai` **Consensus devig across books.** The §8 arithmetic —
-      consensus probability from N books' prices, outlier detection against it.
-      Buildable and testable before the feed above exists.
-- [ ] `P1` `design` `@ai` **Stop feeding the LLM's percentage to EV and Kelly.**
-      `parse_analysis()` regex-scrapes a number out of prose and `ui/app.py`
-      sizes a stake from it. Keep the narrative as commentary beside the
-      numbers; it must stop being the source of them. `MODELS.md` §0.
-- [ ] `P2` `feature` `@ai` **Probabilities carry an interval.** Kelly should
-      shrink with estimate uncertainty rather than by a fixed ¼. `MODELS.md` §9.
+Shipped 2026-09-15. `devig.py`, `staking.py`, 82 new tests, and the Playmaker
+tab rebuilt around the cross-book screen.
+
+- [x] `P1` `bug` `@ai` **Three devig methods, Shin as default.** Multiplicative
+      (ranked last in every comparison), Clarke's power method, and Shin's
+      iterative solve, all generalised to N-way markets. The UI shows the three
+      side by side, because the disagreement is the argument.
+- [x] `P1` `bug` `@ai` **Both sides of a market are now required.** Found while
+      testing: a margin is how far prices sum past certainty, so a single price
+      cannot reveal one. The form asked for exactly one for years — nothing
+      downstream of it could have been right. `MODELS.md` §7a.
+- [x] `P1` `bug` `@ai` **"Edge" and "EV" were the same number.** The stat row
+      showed both; `edge_versus_market()` is exactly EV rescaled by the decimal
+      odds. `staking.edge_versus_fair()` is the independent quantity. §7b.
+- [x] `P1` `feature` `@ai` **Cross-book consensus and the outlier screen.** The
+      Kaunitz arithmetic, with leave-one-out so a price cannot vote for itself,
+      plus a parser for pasted book prices.
+- [x] `P1` `design` `@ai` **A narrative estimate can no longer size a bet.**
+      `staking.Estimate` carries a source with every probability and
+      `staking.kelly()` returns zero for a narrative one.
+- [x] `P2` `feature` `@ai` **Probabilities carry an interval and Kelly uses it.**
+      Sized at the interval's low end rather than a fixed quarter, so an honest
+      interval spanning break-even produces no bet.
 
 ### Stage 2 — data
 

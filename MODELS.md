@@ -34,8 +34,8 @@ This is the same mistake SONAR already corrected on the markets side. There,
 five pre-registered studies found no directional edge. Playmaker never had
 that discipline applied to it.
 
-There is also **one outright defect**, independent of all the above: the vig
-removal is the worst-performing method in the literature. §7.
+There are also **two outright defects** in the wired path, independent of all
+the above, and neither is the one I expected to find. §7.
 
 ---
 
@@ -185,30 +185,69 @@ models.
 
 ---
 
-## 7. The one provable defect: how the vig is removed
+## 7. Two defects in the wired path
 
-`remove_vig()` normalises both sides' implied probabilities to sum to 1:
+I went looking for one and found two others. Correcting my own first pass here,
+because the direction of the error matters.
+
+### 7a. A single price cannot be devigged, and the form only asked for one
+
+A margin is *defined* as the amount by which a market's prices sum past
+certainty. One side tells you nothing about it: `-110` is equally consistent
+with a fair coin flip carrying 4.8% juice and with a genuine 52.4% favourite
+quoted at no margin at all. Playmaker's form has one `PRICE` field.
+
+So nothing downstream of it could have been right, whatever method was used.
+Devigging needs the whole market, and the form now asks for it.
+
+### 7b. "Edge" and "EV" were the same number
+
+`ui/app.py` displayed both, side by side, from:
 
 ```python
-return p_a / total, p_b / total
+def edge_versus_market(model_prob, odds):
+    return model_prob - implied_probability(odds)
 ```
 
-This is the **multiplicative** method, and comparative studies rank it **last**
-of the standard options. Clarke's comparison found the multiplicative model
-worst on every measure, with the **power** method best or equal-best; **Shin's**
-method — which models the margin as protection against insider bettors and
-therefore corrects the favourite-longshot bias — is the other standard
-improvement and generally the best calibrated.
+That compares against the **vig-inclusive** price, which makes it exactly
+`expected_value(p, odds) / american_to_decimal(odds)` — verified identical to
+machine precision across every price and probability tried. Two cells of the
+stat row carried one number.
 
-Multiplicative devig spreads the margin evenly in proportion to price, which
-systematically **understates the favourite and overstates the longshot**. Every
-edge Playmaker reports on a longshot is inflated by this, today.
+The quantity that *is* independent — do we disagree with the market's opinion,
+as opposed to does the price pay enough — needs the fair probability, which
+needs 7a fixed first. `staking.edge_versus_fair()` is that number.
 
-**Verdict:** fix this first. It needs no data, no model and no new dependency —
-just Shin's iterative solve and Clarke's power solve alongside the existing
-method, and the better one as default. This is a bug, not a feature.
+### 7c. And the method does matter, once you can use it
 
----
+My first pass called `remove_vig()` the live defect. It is not wired to
+anything — it is called only from its own tests — so nothing displayed today
+came from it. The method choice still matters for everything built on top, and
+the literature is clear: Clarke found the multiplicative method worst on every
+measure, with the **power** method best or equal-best; **Shin's** method, which
+models the margin as protection against insider bettors, corrects the same
+favourite-longshot bias by construction.
+
+I also had the *direction of the consequence* backwards, which is worth stating
+plainly. Multiplicative devig understates a favourite's fair probability and
+overstates a longshot's. That does not inflate longshot edges — it does the
+opposite. Measured on a `-2000 / +1100` book:
+
+| | favourite | longshot |
+|---|---|---|
+| multiplicative | 91.95% | 8.05% |
+| shin | 93.45% | 6.55% |
+| power | 94.47% | 5.53% |
+
+Against a model that says 93%, multiplicative reports **+1.05 points of edge on
+the favourite** where Shin reports −0.45 — a phantom bet. And it calls the
+longshot 23% more likely than Shin does, which **hides** real edge there. Across
+a sweep of 300-plus synthetic books there was no counterexample to the
+direction.
+
+**Verdict:** all three implemented in `devig.py`, Shin as default, and the three
+shown side by side in the UI so the disagreement is visible rather than
+asserted.
 
 ## 8. Kaunitz (2017): don't out-predict, out-shop
 
