@@ -12,7 +12,7 @@ The module splits cleanly in two, and only one half is sound.
 
 **The arithmetic is correct and well covered.** `american_to_decimal`,
 `implied_probability`, `expected_value`, `kelly_fraction`,
-`edge_versus_market` — 28 tests, no notes. Keep all of it.
+`edge_versus_market` — 33 tests, no notes. Keep all of it.
 
 **There is no model.** The probability those functions consume comes from
 `parse_analysis()`, which regex-scrapes a percentage out of prose an LLM wrote:
