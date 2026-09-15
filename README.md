@@ -67,6 +67,48 @@ equally consistent with a juiced coin flip and with a genuine 52.4% favourite at
 no margin. The form asked for one price for years, which is why nothing
 downstream of it could have been right (`MODELS.md` §7a).
 
+## The prediction models
+
+Three, chosen because they have track records rather than because they are
+clever — `MODELS.md` §1 found that a tuned Elo lands within ~1.65pp of deep
+models and that the market sits above both.
+
+| Module | Model |
+|---|---|
+| `ratings.py` | **Elo** in FiveThirtyEight's published form — margin-of-victory scaling, the autocorrelation correction that stops strong teams' ratings running away, and between-season regression. Plus **Pythagorean expectation** as an independent cross-check, with published exponents only (a guessed one would make the check worse than useless). |
+| `poisson.py` | **Dixon-Coles (1997)** for football: attack and defence per team, the `tau` correction for the four lowest scorelines, and time decay at their own fitted `xi = 0.0065` per half-week. Fitted stdlib-only — with team indicators and a log link each strength's MLE given the others is closed form, so the fixed point *is* the maximum. |
+| `results.py` | The feed. One ESPN adapter and a league code covers all nine sports, no key. |
+| `scoring.py` | The gate. Brier, log loss, calibration and a KEEP/WEAK/DROP verdict, all walk-forward. |
+
+Measured out of sample on real results:
+
+| League | Games | Brier | Baseline | Skill | Verdict |
+|---|---|---|---|---|---|
+| NFL | 1,338 | 0.2286 | 0.2459 | +0.071 | KEEP |
+| NBA | 2,793 | 0.2177 | 0.2474 | +0.120 | KEEP |
+| Premier League | 1,500 | 0.1590 | 0.1847 | +0.139 | KEEP |
+
+Dixon-Coles on 1,125 EPL matches with 375 held out: home advantage 1.155, RPS
+**0.2149** against a published bar around 0.20.
+
+Beating the base rate is real and modest. It is **not** the same as beating a
+bookmaker, who starts from a better price and charges the margin on top.
+
+**Nothing predicts until it has been measured.** `scoring.calibrated_estimate()`
+is the only route from a model to a stake, and it refuses for a model that is
+unmeasured or lost to the base rate — the same rule `calibration.py` holds on the
+markets side.
+
+### Two things not to undo
+
+`results.py` sends **no User-Agent**. ESPN's edge returns 403 for a custom or
+browser-shaped one and accepts urllib's honest default — measured 3/3 versus
+0/3. Do not "fix" a 403 by pasting in a Chrome string: that is impersonation,
+and it is also the thing being blocked. And long windows come back chunked and
+are sometimes truncated, raising `http.client.IncompleteRead` — an
+`HTTPException`, *not* an `OSError`, so it slips past the obvious except clause
+and silently costs a month of results.
+
 ## The cross-book screen
 
 The one approach here with a published track record. Kaunitz, Zhong & Kreiner

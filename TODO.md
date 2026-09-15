@@ -20,7 +20,8 @@
 ## v2 — rebuilding the prediction
 
 Planned from `MODELS.md`, which surveys the models with real track records and
-sets the build order (§11). Stage 1 is done; Stage 2 is next and needs no key.
+sets the build order (§11). Stages 1-5 are done. NFL/NBA/EPL Elo all beat their base rate out of
+sample (KEEP); Dixon-Coles scores RPS 0.2149 on held-out EPL matches.
 
 ### Stage 1 — fix what is provably wrong (no data, no model) — **done**
 
@@ -59,25 +60,25 @@ tab rebuilt around the cross-book screen.
       of wedging, and a faulthandler watchdog aborts with every thread's stack
       after 120s. 15 clean runs; the suite went from 31s to 3-9s.
 
-### Stage 2 — data
+### Stage 2 — data — **done**
 
-- [ ] `P1` `feature` `@ai` **ESPN results adapter.** One adapter plus a league
+- [x] `P1` `feature` `@ai` **ESPN results adapter.** One adapter plus a league
       code covers NFL, NBA, MLB, NHL, EPL, UCL, NCAAB, UFC and ATP with full
       history and no key — verified live 2026-09-15. Local cache. `MODELS.md` §10.
 
-### Stage 3 — game-level models
+### Stage 3 — game-level models — **done**
 
-- [ ] `P1` `feature` `@ai` **Elo with margin-of-victory and autocorrelation
+- [x] `P1` `feature` `@ai` **Elo with margin-of-victory and autocorrelation
       correction**, plus between-season regression. §3. The reviewed literature
       says this captures most of the available pre-match signal.
-- [ ] `P2` `feature` `@ai` **Dixon-Coles** for soccer and hockey — attack/defence
+- [x] `P2` `feature` `@ai` **Dixon-Coles** for soccer and hockey — attack/defence
       Poisson, low-score dependence term, time decay ξ=0.0065/half-week. §4.
-- [ ] `P3` `feature` `@ai` **Pythagorean expectation** as an independent
+- [x] `P3` `feature` `@ai` **Pythagorean expectation** as an independent
       cross-check on Elo (exponents 1.83 MLB / 2.37 NFL / 13.91 NBA / 2.15 NHL). §5.
 
-### Stage 4 — measurement, before any of it is shown
+### Stage 4 — measurement — **done**
 
-- [ ] `P1` `testing` `@ai` **Score the models before trusting them.** Brier, log
+- [x] `P1` `testing` `@ai` **Score the models before trusting them.** Brier, log
       loss, RPS and a calibration curve over held-out history, with a
       KEEP/WEAK/DROP verdict in the style of `backtest._verdict_for`. A model
       that does not beat the market baseline gets labelled, not shipped quietly.
