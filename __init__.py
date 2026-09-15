@@ -46,39 +46,77 @@ class Sport:
     # named in the prompt so the model asks for the right missing inputs.
     context_hint: str
     period_label: str = "game"
-    #: League path on ESPN's public results API — `<group>/<league>`, e.g.
-    #: "basketball/nba". Every one of these was checked live rather than taken
-    #: from documentation; see MODELS.md §10. Unused until the results adapter
-    #: lands, but it is the only per-sport constant that adapter will need.
-    espn_path: str = ""
-    #: How many sides the headline market has. Two for anything that cannot be
-    #: drawn; three where a draw is priced. `devig` handles either, but the
-    #: form uses it to say how many prices a line should carry.
+    #: League paths on ESPN's public results API — `<group>/<league>`. A tuple
+    #: because a sport is not always one competition: international football is
+    #: fourteen of them feeding one pool of national-team ratings. Empty means
+    #: no results feed exists, which is a real state and not an oversight.
+    espn_paths: tuple[str, ...] = ()
+    #: How many sides the headline market has. Two where a draw is impossible,
+    #: three where it is priced. `devig` handles any number.
     outcomes: int = 2
+    #: What a result looks like, which decides how it is parsed and what can be
+    #: fitted to it:
+    #:   "scores"  two sides and a scoreline  -> Elo, Dixon-Coles
+    #:   "winners" two sides and no scoreline -> Elo without margin of victory
+    #:   "field"   a hundred competitors and a finishing order -> neither
+    shape: str = "scores"
+    #: The rating model that fits, or "" where none does. A field event is not
+    #: a head-to-head contest, and pretending Elo applies to a golf tournament
+    #: would be inventing an answer rather than admitting there isn't one.
+    model: str = "elo"
 
+    @property
+    def has_results(self) -> bool:
+        return bool(self.espn_paths)
+
+    @property
+    def has_model(self) -> bool:
+        return bool(self.model)
+
+
+# --------------------------------------------------------------------------- #
+# American football
+# --------------------------------------------------------------------------- #
+_GRIDIRON_PROPS = (
+    PropType("pass_yds", "Passing yards", "yards"),
+    PropType("rush_yds", "Rushing yards", "yards"),
+    PropType("rec_yds", "Receiving yards", "yards"),
+    PropType("receptions", "Receptions", "catches"),
+    PropType("pass_tds", "Passing touchdowns", "TDs"),
+    PropType("anytime_td", "Anytime touchdown", "TDs"),
+    PropType("team_total", "Team total points", "points"),
+    PropType("spread", "Spread", "points"),
+    PropType("game_total", "Game total", "points"),
+)
 
 NFL = Sport(
     key="nfl",
     name="NFL",
-    espn_path="football/nfl",
+    espn_paths=("football/nfl",),
     context_hint="Opponent, week, home/away, weather, injuries, pace",
-    prop_types=(
-        PropType("pass_yds", "Passing yards", "yards"),
-        PropType("rush_yds", "Rushing yards", "yards"),
-        PropType("rec_yds", "Receiving yards", "yards"),
-        PropType("receptions", "Receptions", "catches"),
-        PropType("pass_tds", "Passing touchdowns", "TDs"),
-        PropType("anytime_td", "Anytime touchdown", "TDs"),
-        PropType("team_total", "Team total points", "points"),
-        PropType("spread", "Spread", "points"),
-        PropType("game_total", "Game total", "points"),
+    prop_types=_GRIDIRON_PROPS,
+)
+
+NCAAF = Sport(
+    key="ncaaf",
+    name="College Football",
+    espn_paths=("football/college-football",),
+    context_hint="Opponent, conference game, ranking, home/away, weather, injuries",
+    # Far wider talent gaps than the NFL, so the same market has much longer
+    # prices and the alternate spread is where the lines actually are.
+    prop_types=_GRIDIRON_PROPS + (
+        PropType("alt_spread", "Alternate spread", "points"),
+        PropType("first_half", "First-half result", "points"),
     ),
 )
 
+# --------------------------------------------------------------------------- #
+# Basketball
+# --------------------------------------------------------------------------- #
 NBA = Sport(
     key="nba",
     name="NBA",
-    espn_path="basketball/nba",
+    espn_paths=("basketball/nba",),
     context_hint="Opponent, rest days, back-to-back, pace, injuries, usage",
     prop_types=(
         PropType("points", "Points", "points"),
@@ -95,128 +133,127 @@ NBA = Sport(
     ),
 )
 
-MLB = Sport(
-    key="mlb",
-    name="MLB",
-    espn_path="baseball/mlb",
-    context_hint="Starting pitchers, bullpen usage, park factor, wind, lineup",
-    prop_types=(
-        PropType("strikeouts", "Pitcher strikeouts", "K"),
-        PropType("outs", "Pitcher outs recorded", "outs"),
-        PropType("earned_runs", "Earned runs allowed", "runs"),
-        PropType("hits", "Hits", "hits"),
-        PropType("total_bases", "Total bases", "bases"),
-        PropType("rbis", "RBIs", "RBI"),
-        PropType("runs", "Runs scored", "runs"),
-        PropType("home_run", "Home run", "yes/no"),
-        PropType("team_total", "Team total runs", "runs"),
-        PropType("run_line", "Run line", "runs"),
-        PropType("game_total", "Game total", "runs"),
-    ),
-)
-
-NHL = Sport(
-    key="nhl",
-    name="NHL",
-    espn_path="hockey/nhl",
-    context_hint="Opponent, goalie confirmed, back-to-back, line combinations, power play",
-    prop_types=(
-        PropType("shots", "Shots on goal", "shots"),
-        PropType("points", "Points (goals + assists)", "points"),
-        PropType("goals", "Goals", "goals"),
-        PropType("assists", "Assists", "assists"),
-        PropType("saves", "Goalie saves", "saves"),
-        PropType("team_total", "Team total goals", "goals"),
-        PropType("puck_line", "Puck line", "goals"),
-        PropType("game_total", "Game total", "goals"),
-    ),
-)
-
-_SOCCER_PROPS = (
-    PropType("match_result", "Match result (1X2)", "win/draw/win"),
-    PropType("anytime_scorer", "Anytime goalscorer", "yes/no"),
-    PropType("goals", "Goals", "goals"),
-    PropType("assists", "Assists", "assists"),
-    PropType("shots", "Shots", "shots"),
-    PropType("shots_on_target", "Shots on target", "shots"),
-    PropType("tackles", "Tackles", "tackles"),
-    PropType("card", "To be carded", "yes/no"),
-    PropType("btts", "Both teams to score", "yes/no"),
-    PropType("team_total", "Team total goals", "goals"),
-    PropType("match_total", "Match total goals", "goals"),
-    PropType("handicap", "Asian handicap", "goals"),
-)
-
-EPL = Sport(
-    key="epl",
-    name="Premier League",
-    espn_path="soccer/eng.1",
-    period_label="match",
-    outcomes=3,
-    context_hint="Opponent, home/away, congestion, rotation risk, injuries, referee",
-    prop_types=_SOCCER_PROPS,
-)
-
-UCL = Sport(
-    key="ucl",
-    name="Champions League",
-    espn_path="soccer/uefa.champions",
-    period_label="match",
-    outcomes=3,
-    context_hint="Opponent, leg, aggregate score, travel, rotation, injuries",
-    prop_types=_SOCCER_PROPS,
-)
-
-NCAAB = Sport(
-    key="ncaab",
-    name="NCAA Basketball",
-    espn_path="basketball/mens-college-basketball",
-    context_hint="Opponent, conference game, tempo, home court, rest, injuries",
-    prop_types=(
-        PropType("points", "Points", "points"),
-        PropType("rebounds", "Rebounds", "rebounds"),
-        PropType("assists", "Assists", "assists"),
-        PropType("threes", "Three-pointers made", "threes"),
-        PropType("team_total", "Team total points", "points"),
-        PropType("spread", "Spread", "points"),
-        PropType("game_total", "Game total", "points"),
-    ),
-)
-
-UFC = Sport(
-    key="ufc",
-    name="UFC",
-    espn_path="mma/ufc",
+# --------------------------------------------------------------------------- #
+# MMA — head to head, but there is no scoreline to learn from
+# --------------------------------------------------------------------------- #
+MMA = Sport(
+    key="mma",
+    name="MMA (UFC)",
+    espn_paths=("mma/ufc",),
     period_label="fight",
-    context_hint="Opponent, weight class, stance, reach, camp, layoff, weight cut",
+    shape="winners",
+    context_hint="Opponent, weight class, reach, stance, camp, layoff, weight cut",
     prop_types=(
         PropType("moneyline", "Fight winner", "win"),
         PropType("method", "Method of victory", "KO/sub/decision"),
         PropType("round", "Round betting", "round"),
         PropType("distance", "Fight to go the distance", "yes/no"),
         PropType("total_rounds", "Total rounds", "rounds"),
+        PropType("round_group", "Group of rounds", "rounds"),
     ),
 )
 
-ATP = Sport(
-    key="atp",
-    name="Tennis (ATP)",
-    espn_path="tennis/atp",
+# --------------------------------------------------------------------------- #
+# International football — national teams only, no club competitions
+# --------------------------------------------------------------------------- #
+INTL_FOOTBALL = Sport(
+    key="intl_football",
+    name="International Football",
+    # One pool of national-team ratings fed by every competition they play in.
+    # A side's form in a qualifier is evidence about it in the Euros, and
+    # splitting them would throw that away — international sides play so rarely
+    # that no single competition has enough matches to fit on.
+    espn_paths=(
+        "soccer/fifa.world",             # World Cup
+        "soccer/uefa.euro",              # European Championship
+        "soccer/uefa.euroq",             # Euro qualifying
+        "soccer/uefa.nations",           # Nations League
+        "soccer/conmebol.america",       # Copa America
+        "soccer/concacaf.gold",          # Gold Cup
+        "soccer/caf.nations",            # Africa Cup of Nations
+        "soccer/fifa.worldq.uefa",       # World Cup qualifying, by confederation
+        "soccer/fifa.worldq.conmebol",
+        "soccer/fifa.worldq.concacaf",
+        "soccer/fifa.worldq.afc",
+        "soccer/fifa.worldq.caf",
+        "soccer/fifa.worldq.ofc",
+        "soccer/fifa.friendly",          # friendlies — weak evidence, but evidence
+    ),
     period_label="match",
-    context_hint="Opponent, surface, head-to-head, recent form, travel, retirement risk",
+    outcomes=3,
+    model="dixon_coles",
+    context_hint="Opponent, competition, neutral venue, travel, squad availability, tournament stage",
     prop_types=(
-        PropType("match_winner", "Match winner", "win"),
-        PropType("set_betting", "Correct set score", "sets"),
-        PropType("total_games", "Total games", "games"),
-        PropType("game_handicap", "Game handicap", "games"),
-        PropType("aces", "Aces", "aces"),
-        PropType("double_faults", "Double faults", "faults"),
+        PropType("match_result", "Match result (1X2)", "win/draw/win"),
+        PropType("double_chance", "Double chance", "two of three"),
+        PropType("anytime_scorer", "Anytime goalscorer", "yes/no"),
+        PropType("goals", "Goals", "goals"),
+        PropType("assists", "Assists", "assists"),
+        PropType("shots_on_target", "Shots on target", "shots"),
+        PropType("card", "To be carded", "yes/no"),
+        PropType("btts", "Both teams to score", "yes/no"),
+        PropType("team_total", "Team total goals", "goals"),
+        PropType("match_total", "Match total goals", "goals"),
+        PropType("handicap", "Asian handicap", "goals"),
+        PropType("correct_score", "Correct score", "goals"),
+        PropType("to_qualify", "To qualify / win outright", "yes/no"),
+    ),
+)
+
+# --------------------------------------------------------------------------- #
+# Field events — a finishing order, not a contest between two sides
+# --------------------------------------------------------------------------- #
+GOLF = Sport(
+    key="golf",
+    name="Golf",
+    # Top tier only: PGA Tour, DP World Tour and LIV. The majors run under
+    # golf/pga. Senior and development tours are deliberately excluded.
+    espn_paths=("golf/pga", "golf/eur", "golf/liv"),
+    period_label="tournament",
+    shape="field",
+    model="",
+    context_hint="Course, par, weather and wind, field strength, recent form, cut line",
+    prop_types=(
+        PropType("outright", "Tournament winner", "win"),
+        PropType("top_5", "Top-5 finish", "yes/no"),
+        PropType("top_10", "Top-10 finish", "yes/no"),
+        PropType("top_20", "Top-20 finish", "yes/no"),
+        PropType("make_cut", "To make the cut", "yes/no"),
+        PropType("matchup", "Head-to-head matchup", "win"),
+        PropType("three_ball", "Three-ball", "win"),
+        PropType("first_round_leader", "First-round leader", "win"),
+        PropType("nationality", "Top national finisher", "win"),
+    ),
+)
+
+CYCLING = Sport(
+    key="cycling",
+    name="Cycling",
+    # No results feed. ESPN serves no cycling endpoint at all (400), and the
+    # free alternatives are unofficial scrapers of one site. So this sport is
+    # priced and screened like any other — that arithmetic needs no data — but
+    # nothing here rates a rider. Saying so is better than a rating nobody
+    # could check.
+    espn_paths=(),
+    period_label="race",
+    shape="field",
+    model="",
+    context_hint="Race and stage profile, gradient, weather, team strength, GC position, form",
+    prop_types=(
+        PropType("outright", "Race or GC winner", "win"),
+        PropType("stage_winner", "Stage winner", "win"),
+        PropType("podium", "Podium finish", "yes/no"),
+        PropType("top_10", "Top-10 finish", "yes/no"),
+        PropType("points_jersey", "Points classification", "win"),
+        PropType("mountains_jersey", "Mountains classification", "win"),
+        PropType("young_rider", "Young rider classification", "win"),
+        PropType("matchup", "Head-to-head matchup", "win"),
     ),
 )
 
 #: Insertion order is display order in the picker.
 SPORTS: dict[str, Sport] = {
-    s.key: s for s in (NFL, NBA, MLB, NHL, EPL, UCL, NCAAB, UFC, ATP)
+    s.key: s for s in (NFL, NCAAF, NBA, MMA, INTL_FOOTBALL, GOLF, CYCLING)
 }
 
 

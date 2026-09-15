@@ -13,14 +13,33 @@ Sports prop pricing. Pick a sport and prop, paste what each book is offering,
 and it removes the margin, finds which book is out of line with its peers, and
 sizes the result.
 
-**Nine sports**: NFL, NBA, MLB, NHL, Premier League, Champions League, NCAA
-basketball, UFC and ATP tennis — 81 prop types between them. Adding the eight
-after NFL needed no new arithmetic, which is the point of the shape: `devig.py`
-and `staking.py` are pure odds maths and know nothing about what they price. A
-three-way soccer market works because `devig` takes N outcomes, not because
-soccer was special-cased. What a `Sport` entry supplies is the prop vocabulary,
-the context a reader should give, the league path for the coming results feed,
-and how many sides the headline market has.
+**Seven sports**: NFL, College Football, NBA, MMA (UFC), International
+Football, Golf and Cycling — 67 prop types between them. Football means
+**international team games only** — World Cup, Euros, Copa América, Gold Cup,
+AFCON, Nations League, every confederation's qualifiers, and friendlies. No club
+competitions.
+
+The **pricing** half is identical for all seven: `devig.py` and `staking.py` are
+pure odds maths and never learn what they are pricing. The **rating** half is
+not, because a result does not mean the same thing in each — `Sport.shape` says
+which:
+
+| Shape | Sports | Fitted by |
+|---|---|---|
+| `scores` — two sides, a scoreline | NFL, College Football, NBA, International Football | Elo with margin of victory; football also Dixon-Coles |
+| `winners` — two sides, no scoreline | MMA | Elo on wins and losses; no margin to learn from, so it degenerates to plain Elo, which is correct |
+| `field` — a finishing order | Golf, Cycling | **nothing** — a hundred competitors is not a head-to-head contest |
+
+**Cycling has no results feed.** ESPN serves no cycling endpoint (400) and the
+free alternatives are unofficial scrapers of one site, so `espn_paths` is empty
+and `has_results` is False. That is a real state, not an oversight: cycling is
+priced and screened like anything else, and nothing here rates a rider. The tab
+says so when you pick it.
+
+**International football pools fourteen competitions** into one set of
+national-team ratings. Sides play a handful of times a year, so splitting by
+tournament would leave none with enough matches to fit on — and form in a
+qualifier is evidence about the same side at the Euros.
 
 The split mirrors the rest of SONAR: the arithmetic is deterministic and
 testable (odds conversion, implied probability, expected value, Kelly), and
@@ -35,8 +54,9 @@ devigging and staking added in v2 are their own modules.
 | Location | Role |
 |---|---|
 | `Sport` / `PropType` | Frozen dataclasses describing a sport's prop types and the game-context hint shown on its form. |
-| `Sport.espn_path` / `Sport.outcomes` | League path for the results feed, and whether the headline market prices a draw. |
-| `list_sports()` / `get_sport()` | The nine-sport registry. |
+| `Sport.espn_paths` / `Sport.shape` / `Sport.model` | Which competitions feed it, what a result looks like, and which model fits — or `""` where none does. |
+| `Sport.outcomes` | Whether the headline market prices a draw. |
+| `list_sports()` / `get_sport()` | The seven-sport registry. |
 | `american_to_decimal()` / `implied_probability()` | Odds conversion. |
 | `remove_vig()` | The proportional method, kept for reference. `devig.py` is what you want. |
 | `devig.py` | Three devig methods (multiplicative, Clarke power, Shin), cross-book consensus, the outlier screen, and the price parser. |
@@ -77,7 +97,7 @@ models and that the market sits above both.
 |---|---|
 | `ratings.py` | **Elo** in FiveThirtyEight's published form — margin-of-victory scaling, the autocorrelation correction that stops strong teams' ratings running away, and between-season regression. Plus **Pythagorean expectation** as an independent cross-check, with published exponents only (a guessed one would make the check worse than useless). |
 | `poisson.py` | **Dixon-Coles (1997)** for football: attack and defence per team, the `tau` correction for the four lowest scorelines, and time decay at their own fitted `xi = 0.0065` per half-week. Fitted stdlib-only — with team indicators and a log link each strength's MLE given the others is closed form, so the fixed point *is* the maximum. |
-| `results.py` | The feed. One ESPN adapter and a league code covers all nine sports, no key. |
+| `results.py` | The feed. One ESPN adapter over each sport's league codes, no key. `parse_scoreboard` reads a scoreline, `parse_bouts` reads a fight card (no home/away, no score — only a winner). |
 | `scoring.py` | The gate. Brier, log loss, calibration and a KEEP/WEAK/DROP verdict, all walk-forward. |
 
 Measured out of sample on real results:

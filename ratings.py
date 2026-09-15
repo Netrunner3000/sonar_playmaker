@@ -59,23 +59,26 @@ class EloConfig:
 CONFIGS: dict[str, EloConfig] = {
     # FiveThirtyEight NFL: K=20, 2.2 autocorrelation, a third regressed.
     "nfl": EloConfig(k=20.0, home_advantage=65.0, autocorrelation=2.2),
+    # College football: far wider talent gaps than the NFL, so ratings spread
+    # much further and a bigger home field is real (crowds of a hundred
+    # thousand, and freshmen). K is unpublished — NFL's, standing in.
+    "ncaaf": EloConfig(k=20.0, home_advantage=90.0, autocorrelation=2.2),
     # FiveThirtyEight NBA: K=20, ~100 points of home court.
     "nba": EloConfig(k=20.0, home_advantage=100.0, autocorrelation=2.2),
-    # FiveThirtyEight NHL: 2.05 autocorrelation; ties are possible in regulation.
-    "nhl": EloConfig(k=6.0, home_advantage=50.0, autocorrelation=2.05, draws=True),
-    # Baseball moves ratings slowly — one game is a small sample of a long season.
-    "mlb": EloConfig(k=4.0, home_advantage=24.0, autocorrelation=2.2),
-    # Soccer: draws are priced, and club Elo conventionally uses a low K.
-    "epl": EloConfig(k=20.0, home_advantage=65.0, autocorrelation=2.2, draws=True),
-    "ucl": EloConfig(k=20.0, home_advantage=55.0, autocorrelation=2.2, draws=True),
-    # Unpublished defaults below — NFL settings standing in, not measured.
-    "ncaab": EloConfig(k=20.0, home_advantage=100.0, autocorrelation=2.2),
-    "ufc": EloConfig(k=24.0, home_advantage=0.0, autocorrelation=2.2),
-    "atp": EloConfig(k=24.0, home_advantage=0.0, autocorrelation=2.2),
+    # MMA: no venue effect and no scoreline, so no home advantage and the
+    # margin multiplier is a constant. A higher K because a fighter competes
+    # two or three times a year — every bout has to count for more.
+    "mma": EloConfig(k=32.0, home_advantage=0.0, autocorrelation=2.2),
+    # International football: draws are priced, sides play a handful of times a
+    # year, and the "home" side is often at a neutral tournament venue — so a
+    # smaller home effect than a club league would carry.
+    "intl_football": EloConfig(k=20.0, home_advantage=50.0,
+                               autocorrelation=2.2, draws=True),
 }
 
 #: Sports whose Elo settings are a stand-in rather than a published figure.
-UNTUNED = frozenset({"ncaab", "ufc", "atp"})
+#: Naming them is the point — a guess must not read as a finding.
+UNTUNED = frozenset({"ncaaf", "mma"})
 
 
 def config_for(sport_key: str) -> EloConfig:
@@ -238,10 +241,8 @@ def pythagorean(scored: float, allowed: float, exponent: float) -> float:
 #: Published exponents only. A sport absent here has no measured value that I
 #: could source, and guessing one would make the cross-check worse than useless.
 PYTHAGOREAN_EXPONENTS: dict[str, float] = {
-    "mlb": 1.83,     # modern baseball
     "nfl": 2.37,     # Football Outsiders
     "nba": 13.91,    # Morey
-    "nhl": 2.15,
 }
 
 
