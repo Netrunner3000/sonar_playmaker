@@ -9,11 +9,18 @@ into the rest of the app._
 
 ## What it does
 
-Sports prop-bet analysis: pick a sport and prop, enter the line, price and any
-supporting stats, and an LLM read scores it against Playmaker's own odds/EV/
-Kelly arithmetic. NFL is the only sport implemented today; the module is
-generalised so a second sport is a registry entry (`Sport`/`PropType`) rather
-than a rewrite.
+Sports prop pricing. Pick a sport and prop, paste what each book is offering,
+and it removes the margin, finds which book is out of line with its peers, and
+sizes the result.
+
+**Nine sports**: NFL, NBA, MLB, NHL, Premier League, Champions League, NCAA
+basketball, UFC and ATP tennis — 81 prop types between them. Adding the eight
+after NFL needed no new arithmetic, which is the point of the shape: `devig.py`
+and `staking.py` are pure odds maths and know nothing about what they price. A
+three-way soccer market works because `devig` takes N outcomes, not because
+soccer was special-cased. What a `Sport` entry supplies is the prop vocabulary,
+the context a reader should give, the league path for the coming results feed,
+and how many sides the headline market has.
 
 The split mirrors the rest of SONAR: the arithmetic is deterministic and
 testable (odds conversion, implied probability, expected value, Kelly), and
@@ -28,7 +35,8 @@ devigging and staking added in v2 are their own modules.
 | Location | Role |
 |---|---|
 | `Sport` / `PropType` | Frozen dataclasses describing a sport's prop types and the game-context hint shown on its form. |
-| `list_sports()` / `get_sport()` | The sport/prop-type registry. |
+| `Sport.espn_path` / `Sport.outcomes` | League path for the results feed, and whether the headline market prices a draw. |
+| `list_sports()` / `get_sport()` | The nine-sport registry. |
 | `american_to_decimal()` / `implied_probability()` | Odds conversion. |
 | `remove_vig()` | The proportional method, kept for reference. `devig.py` is what you want. |
 | `devig.py` | Three devig methods (multiplicative, Clarke power, Shin), cross-book consensus, the outlier screen, and the price parser. |

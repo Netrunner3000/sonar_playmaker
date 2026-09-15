@@ -82,11 +82,17 @@ tab rebuilt around the cross-book screen.
       KEEP/WEAK/DROP verdict in the style of `backtest._verdict_for`. A model
       that does not beat the market baseline gets labelled, not shipped quietly.
 
-### Stage 5 — more sports
+### Stage 5 — more sports — **done, and earlier than planned**
 
-- [ ] `P1` `feature` `@ai` **Registry entries beyond NFL** — NBA, MLB, NHL, EPL,
-      UCL, NCAAB to start. Each needs its prop types, a league code and a
-      pointer to whichever Stage 3 model suits its scoring shape.
+- [x] `P1` `feature` `@ai` **Nine sports registered**: NFL, NBA, MLB, NHL,
+      Premier League, Champions League, NCAA basketball, UFC, ATP tennis — 81
+      prop types. The plan had this at Stage 5 on the assumption it needed the
+      models first. It did not: everything Stage 1 shipped is pure odds
+      arithmetic, so the screen works on a soccer 1X2 the same day it works on
+      an NFL spread. Each entry carries its ESPN league path (all nine verified
+      live, behind `-m network`) ready for Stage 2.
+- [ ] `P2` `feature` `@ai` **Point each sport at a Stage 3 model** once those
+      exist — Dixon-Coles suits soccer and hockey, Elo the rest.
 
 ### Stage 6 — player props
 

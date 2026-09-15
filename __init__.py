@@ -1,14 +1,24 @@
-"""Playmaker — sports prop-bet analysis.
+"""Playmaker — sports prop pricing.
 
 Ported from Sentinel's NFL agent (which was never a standalone project — it is
-part of SONAR, the betting tool), generalised so a second sport is a registry
-entry rather than a rewrite. NFL is the only sport implemented today; the shape
-below is what an NBA or soccer entry has to fill in.
+part of SONAR, the betting tool) and generalised so a sport is a registry entry
+rather than a rewrite. Nine are registered: NFL, NBA, MLB, NHL, the Premier
+League, the Champions League, NCAA basketball, UFC and ATP tennis.
+
+Adding one needed no new maths, which is the point of the shape. Everything in
+`devig.py` and `staking.py` — margin removal, cross-book consensus, the outlier
+screen, Kelly under uncertainty — is pure odds arithmetic and knows nothing
+about the sport it is pricing. A three-way soccer market works because `devig`
+takes N outcomes, not because soccer was special-cased.
+
+What *is* sport-specific is the prop vocabulary (a goalie's saves, a pitcher's
+strikeouts), the context a reader should supply, and the league path for the
+results feed the rating models will need. That is the whole of a `Sport` entry.
 
 The split matches the rest of SONAR: the arithmetic here is deterministic and
-testable (odds conversion, implied probability, expected value, Kelly), and the
-LLM is asked only for the narrative read on top of numbers it did not invent.
-Nothing in this module places a bet — it evaluates one.
+testable, and the LLM is asked only for a narrative read on top of numbers it
+did not invent — and, since v2, one it is not allowed to size a bet from.
+Nothing in this module places a bet; it prices one.
 """
 
 from __future__ import annotations
@@ -36,12 +46,21 @@ class Sport:
     # named in the prompt so the model asks for the right missing inputs.
     context_hint: str
     period_label: str = "game"
+    #: League path on ESPN's public results API — `<group>/<league>`, e.g.
+    #: "basketball/nba". Every one of these was checked live rather than taken
+    #: from documentation; see MODELS.md §10. Unused until the results adapter
+    #: lands, but it is the only per-sport constant that adapter will need.
+    espn_path: str = ""
+    #: How many sides the headline market has. Two for anything that cannot be
+    #: drawn; three where a draw is priced. `devig` handles either, but the
+    #: form uses it to say how many prices a line should carry.
+    outcomes: int = 2
 
 
 NFL = Sport(
     key="nfl",
     name="NFL",
-    period_label="game",
+    espn_path="football/nfl",
     context_hint="Opponent, week, home/away, weather, injuries, pace",
     prop_types=(
         PropType("pass_yds", "Passing yards", "yards"),
@@ -56,7 +75,149 @@ NFL = Sport(
     ),
 )
 
-SPORTS: dict[str, Sport] = {NFL.key: NFL}
+NBA = Sport(
+    key="nba",
+    name="NBA",
+    espn_path="basketball/nba",
+    context_hint="Opponent, rest days, back-to-back, pace, injuries, usage",
+    prop_types=(
+        PropType("points", "Points", "points"),
+        PropType("rebounds", "Rebounds", "rebounds"),
+        PropType("assists", "Assists", "assists"),
+        PropType("pra", "Points + rebounds + assists", "combined"),
+        PropType("threes", "Three-pointers made", "threes"),
+        PropType("steals_blocks", "Steals + blocks", "stocks"),
+        PropType("turnovers", "Turnovers", "turnovers"),
+        PropType("double_double", "Double-double", "yes/no"),
+        PropType("team_total", "Team total points", "points"),
+        PropType("spread", "Spread", "points"),
+        PropType("game_total", "Game total", "points"),
+    ),
+)
+
+MLB = Sport(
+    key="mlb",
+    name="MLB",
+    espn_path="baseball/mlb",
+    context_hint="Starting pitchers, bullpen usage, park factor, wind, lineup",
+    prop_types=(
+        PropType("strikeouts", "Pitcher strikeouts", "K"),
+        PropType("outs", "Pitcher outs recorded", "outs"),
+        PropType("earned_runs", "Earned runs allowed", "runs"),
+        PropType("hits", "Hits", "hits"),
+        PropType("total_bases", "Total bases", "bases"),
+        PropType("rbis", "RBIs", "RBI"),
+        PropType("runs", "Runs scored", "runs"),
+        PropType("home_run", "Home run", "yes/no"),
+        PropType("team_total", "Team total runs", "runs"),
+        PropType("run_line", "Run line", "runs"),
+        PropType("game_total", "Game total", "runs"),
+    ),
+)
+
+NHL = Sport(
+    key="nhl",
+    name="NHL",
+    espn_path="hockey/nhl",
+    context_hint="Opponent, goalie confirmed, back-to-back, line combinations, power play",
+    prop_types=(
+        PropType("shots", "Shots on goal", "shots"),
+        PropType("points", "Points (goals + assists)", "points"),
+        PropType("goals", "Goals", "goals"),
+        PropType("assists", "Assists", "assists"),
+        PropType("saves", "Goalie saves", "saves"),
+        PropType("team_total", "Team total goals", "goals"),
+        PropType("puck_line", "Puck line", "goals"),
+        PropType("game_total", "Game total", "goals"),
+    ),
+)
+
+_SOCCER_PROPS = (
+    PropType("match_result", "Match result (1X2)", "win/draw/win"),
+    PropType("anytime_scorer", "Anytime goalscorer", "yes/no"),
+    PropType("goals", "Goals", "goals"),
+    PropType("assists", "Assists", "assists"),
+    PropType("shots", "Shots", "shots"),
+    PropType("shots_on_target", "Shots on target", "shots"),
+    PropType("tackles", "Tackles", "tackles"),
+    PropType("card", "To be carded", "yes/no"),
+    PropType("btts", "Both teams to score", "yes/no"),
+    PropType("team_total", "Team total goals", "goals"),
+    PropType("match_total", "Match total goals", "goals"),
+    PropType("handicap", "Asian handicap", "goals"),
+)
+
+EPL = Sport(
+    key="epl",
+    name="Premier League",
+    espn_path="soccer/eng.1",
+    period_label="match",
+    outcomes=3,
+    context_hint="Opponent, home/away, congestion, rotation risk, injuries, referee",
+    prop_types=_SOCCER_PROPS,
+)
+
+UCL = Sport(
+    key="ucl",
+    name="Champions League",
+    espn_path="soccer/uefa.champions",
+    period_label="match",
+    outcomes=3,
+    context_hint="Opponent, leg, aggregate score, travel, rotation, injuries",
+    prop_types=_SOCCER_PROPS,
+)
+
+NCAAB = Sport(
+    key="ncaab",
+    name="NCAA Basketball",
+    espn_path="basketball/mens-college-basketball",
+    context_hint="Opponent, conference game, tempo, home court, rest, injuries",
+    prop_types=(
+        PropType("points", "Points", "points"),
+        PropType("rebounds", "Rebounds", "rebounds"),
+        PropType("assists", "Assists", "assists"),
+        PropType("threes", "Three-pointers made", "threes"),
+        PropType("team_total", "Team total points", "points"),
+        PropType("spread", "Spread", "points"),
+        PropType("game_total", "Game total", "points"),
+    ),
+)
+
+UFC = Sport(
+    key="ufc",
+    name="UFC",
+    espn_path="mma/ufc",
+    period_label="fight",
+    context_hint="Opponent, weight class, stance, reach, camp, layoff, weight cut",
+    prop_types=(
+        PropType("moneyline", "Fight winner", "win"),
+        PropType("method", "Method of victory", "KO/sub/decision"),
+        PropType("round", "Round betting", "round"),
+        PropType("distance", "Fight to go the distance", "yes/no"),
+        PropType("total_rounds", "Total rounds", "rounds"),
+    ),
+)
+
+ATP = Sport(
+    key="atp",
+    name="Tennis (ATP)",
+    espn_path="tennis/atp",
+    period_label="match",
+    context_hint="Opponent, surface, head-to-head, recent form, travel, retirement risk",
+    prop_types=(
+        PropType("match_winner", "Match winner", "win"),
+        PropType("set_betting", "Correct set score", "sets"),
+        PropType("total_games", "Total games", "games"),
+        PropType("game_handicap", "Game handicap", "games"),
+        PropType("aces", "Aces", "aces"),
+        PropType("double_faults", "Double faults", "faults"),
+    ),
+)
+
+#: Insertion order is display order in the picker.
+SPORTS: dict[str, Sport] = {
+    s.key: s for s in (NFL, NBA, MLB, NHL, EPL, UCL, NCAAB, UFC, ATP)
+}
 
 
 def list_sports() -> list[Sport]:
