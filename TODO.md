@@ -8,6 +8,16 @@
 
 ## Needs you
 
+- [ ] `P2` `research` `@me` **A cycling results source, if you want cycling
+      rated.** ESPN serves no cycling endpoint at all, and the free
+      alternatives are unofficial scrapers of ProCyclingStats or FirstCycling
+      rather than APIs. Until one exists, cycling is priced and screened but
+      not rated — which the tab says plainly. Worth deciding whether it is
+      worth a scraper, given that a field of 150 riders would also need a
+      different model from anything here (§6 territory: a Plackett-Luce
+      ordering rather than a head-to-head rating).
+
+
 - [ ] `P1` `infra` `@me` **Multi-book odds feed.** The Kaunitz consensus-outlier
       strategy (`MODELS.md` §8) is the highest-value item in the whole plan and
       the only one that needs an account. The Odds API's free tier is quoted as
@@ -94,6 +104,20 @@ tab rebuilt around the cross-book screen.
       live, behind `-m network`) ready for Stage 2.
 - [ ] `P2` `feature` `@ai` **Point each sport at a Stage 3 model** once those
       exist — Dixon-Coles suits soccer and hockey, Elo the rest.
+
+### Field events — the gap the new registry opened
+
+- [ ] `P2` `research` `@ai` **A model for golf and cycling.** Both are a
+      finishing order across a large field, which no head-to-head rating fits.
+      The literature route is a Plackett-Luce / rank-ordered logit over
+      competitor strengths, or for golf specifically a strokes-gained model.
+      Until then the tab prices and screens them and says it cannot rate them,
+      which is the honest state rather than a gap to paper over.
+- [ ] `P3` `research` `@ai` **MMA is WEAK and may stay that way.** +0.003 skill
+      over 3,369 fights. Style-matchup features (striker vs grappler, reach,
+      stance) are the obvious next thing to test, and the pre-registration
+      discipline from `CONFIDENCE.md` §10b applies — predict what should
+      improve before measuring, not after.
 
 ### Stage 6 — player props
 
