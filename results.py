@@ -35,15 +35,11 @@ BASE = "https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard"
 # "fix" a 403 here by pasting in a browser string; that is impersonation, and it
 # is also what gets blocked.
 
-#: ESPN caps a response, so a window that returns exactly this many events is
-#: assumed truncated and split — see `_fetch_window`.
-PAGE_LIMIT = 400
-#: A quarter-year per request. Thirty days was twelve times more requests than
-#: necessary: a full year of one competition comes back in half a second, and
-#: the extra traffic was enough to get rate-limited while fetching a sport that
-#: pools fourteen leagues. Density varies hugely between them, so the splitting
-#: below is what actually guarantees nothing is lost.
-CHUNK_DAYS = 90
+#: The most ESPN will serve in one response. Measured, because none of it is
+#: documented: limit=400 returns 400, limit=1000 returns 1000, and limit=2000
+#: returns *twenty-five* — past some threshold the endpoint quietly gives up
+#: rather than erroring, which is the worst way for a cap to behave.
+PAGE_LIMIT = 1000
 TIMEOUT_S = 20.0
 #: Be a considerate guest on somebody else's free endpoint.
 PAUSE_S = 0.25
@@ -51,8 +47,6 @@ RETRIES = 3
 RETRY_PAUSE_S = 0.5
 #: What to wait after a 403/429 — the endpoint has said slow down.
 THROTTLED_PAUSE_S = 2.0
-#: How many times a capped window may be halved before giving up.
-MAX_SPLITS = 6
 
 
 @dataclass(frozen=True)
@@ -180,22 +174,40 @@ def parse_bouts(payload: dict) -> list[Game]:
 PARSERS = {"scores": parse_scoreboard, "winners": parse_bouts}
 
 
-def _chunks(start: dt.date, end: dt.date, days: int = CHUNK_DAYS):
-    cursor = start
-    while cursor <= end:
-        stop = min(cursor + dt.timedelta(days=days - 1), end)
-        yield cursor, stop
-        cursor = stop + dt.timedelta(days=1)
+def _year_token(year: int) -> str:
+    return f"{year:04d}"
+
+
+def _month_tokens(year: int) -> list[str]:
+    return [f"{year:04d}{month:02d}" for month in range(1, 13)]
+
+
+def _truncated(events: int) -> bool:
+    """Whether a response looks capped rather than complete.
+
+    ESPN truncates and says nothing — no next-page cursor, no total count, no
+    error. A response holding exactly the limit has almost certainly lost
+    fixtures, and silently short history is worse than slow history: it fits a
+    rating on half a season and looks perfectly healthy doing it.
+    """
+    return events >= PAGE_LIMIT
 
 
 def fetch_range(sport: Sport | str, start: dt.date, end: dt.date,
                 pause: float = PAUSE_S) -> list[Game]:
-    """Completed games between two dates, oldest first.
+    """Completed results between two dates, oldest first.
 
-    The only networked function in Playmaker. A chunk that fails is skipped —
-    one bad window should not cost a season — and duplicates across chunk
-    boundaries are dropped, because ESPN includes a fixture in every range that
-    touches it.
+    Asks for a whole year at a time and drops to months only when the year
+    comes back capped. That matters more than it sounds: a sport here can be
+    fourteen competitions, and thirty-day windows made six years of
+    international football over a thousand requests. A year per league is
+    eighty-four, and the sparse competitions — which is most of them — never
+    need the month fallback at all.
+
+    Whole years are fetched and then filtered to the window asked for, because
+    ESPN's arbitrary `from-to` ranges are unreliable: identical requests that
+    worked earlier in a session have come back 400. The year and month forms
+    have not.
     """
     if isinstance(sport, str):
         sport = get_sport(sport)
@@ -214,11 +226,19 @@ def fetch_range(sport: Sport | str, start: dt.date, end: dt.date,
     parse = PARSERS[sport.shape]
     seen: set[tuple] = set()
     games: list[Game] = []
-    # A sport can be several competitions — international football is fourteen,
-    # all feeding one pool of national-team ratings.
     for path in sport.espn_paths:
-        for first, last in _chunks(start, end):
-            for game in _fetch_window(path, first, last, parse, pause):
+        for year in range(start.year, end.year + 1):
+            found, events = _fetch_token(path, _year_token(year), parse, pause)
+            if _truncated(events):
+                # A dense league — the NBA runs past a thousand fixtures a
+                # calendar year. Months are always well inside the cap.
+                found = []
+                for token in _month_tokens(year):
+                    part, _ = _fetch_token(path, token, parse, pause)
+                    found.extend(part)
+            for game in found:
+                if not (start <= game.date <= end):
+                    continue
                 key = (game.date, game.home, game.away)
                 if key in seen:
                     continue
@@ -228,18 +248,15 @@ def fetch_range(sport: Sport | str, start: dt.date, end: dt.date,
     return games
 
 
-def _fetch_window(path: str, first: dt.date, last: dt.date, parse,
-                  pause: float, depth: int = 0) -> list[Game]:
-    """One request, split in half if the response looks capped.
+def _fetch_token(path: str, token: str, parse, pause: float) -> tuple[list[Game], int]:
+    """One request. Returns what parsed, and how many events came back.
 
-    ESPN truncates a response rather than paginating it, and it does not say
-    so. A window that comes back with exactly `PAGE_LIMIT` events has almost
-    certainly lost some, and silently short history is worse than slow history:
-    it produces a rating that looks fine and is fitted on half the season.
+    The raw event count is handed back separately because it is what says
+    whether the answer was capped — the parsed list is shorter, since scheduled
+    and postponed fixtures are dropped, and using it would miss truncation.
     """
     url = BASE.format(path=path)
-    query = urllib.parse.urlencode({
-        "dates": f"{first:%Y%m%d}-{last:%Y%m%d}", "limit": PAGE_LIMIT})
+    query = urllib.parse.urlencode({"dates": token, "limit": PAGE_LIMIT})
     request = urllib.request.Request(f"{url}?{query}")
 
     payload = None
@@ -249,8 +266,12 @@ def _fetch_window(path: str, first: dt.date, last: dt.date, parse,
                 payload = json.load(response)
             break
         except urllib.error.HTTPError as exc:
-            # 429 and 403 both mean "slow down" here; back off hard rather than
-            # hammering a free endpoint that has already said no.
+            # 429 and 403 mean slow down; back off hard rather than hammering a
+            # free endpoint that has already said no. A 400 is this league
+            # having nothing for that window, which is normal and not worth
+            # retrying.
+            if exc.code == 400:
+                return [], 0
             if exc.code in (403, 429) and attempt + 1 < RETRIES:
                 time.sleep(THROTTLED_PAUSE_S * (attempt + 1))
             elif attempt + 1 < RETRIES:
@@ -259,24 +280,16 @@ def _fetch_window(path: str, first: dt.date, last: dt.date, parse,
                 OSError, ValueError, TimeoutError):
             # A long window comes back chunked and is sometimes truncated
             # mid-stream (http.client.IncompleteRead, which is an
-            # HTTPException and not an OSError — catching OSError alone lets it
-            # through). Retrying costs a second; losing the window costs a
-            # season of results.
+            # HTTPException and *not* an OSError — catching OSError alone lets
+            # it through). Retrying costs a second; losing the window costs a
+            # season.
             if attempt + 1 < RETRIES:
                 time.sleep(RETRY_PAUSE_S * (attempt + 1))
     if pause:
         time.sleep(pause)
     if payload is None:
-        return []
-
-    events = len(payload.get("events") or [])
-    span = (last - first).days
-    if events >= PAGE_LIMIT and span >= 1 and depth < MAX_SPLITS:
-        middle = first + dt.timedelta(days=span // 2)
-        return (_fetch_window(path, first, middle, parse, pause, depth + 1)
-                + _fetch_window(path, middle + dt.timedelta(days=1), last,
-                                parse, pause, depth + 1))
-    return parse(payload)
+        return [], 0
+    return parse(payload), len(payload.get("events") or [])
 
 
 def fetch_seasons(sport: Sport | str, seasons: int = 3,

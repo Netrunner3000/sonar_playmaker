@@ -102,14 +102,28 @@ models and that the market sits above both.
 
 Measured out of sample on real results:
 
-| League | Games | Brier | Baseline | Skill | Verdict |
+| Sport | Results | Brier | Baseline | Skill | Verdict |
 |---|---|---|---|---|---|
-| NFL | 1,338 | 0.2286 | 0.2459 | +0.071 | KEEP |
-| NBA | 2,793 | 0.2177 | 0.2474 | +0.120 | KEEP |
-| Premier League | 1,500 | 0.1590 | 0.1847 | +0.139 | KEEP |
+| International Football | 5,842 | 0.1525 | 0.1834 | **+0.168** | KEEP |
+| College Football | 1,823 | 0.2057 | 0.2380 | **+0.136** | KEEP |
+| NBA | 2,793 | 0.2177 | 0.2474 | **+0.120** | KEEP |
+| NFL | 1,338 | 0.2286 | 0.2459 | **+0.071** | KEEP |
+| MMA | 3,369 | 0.2455 | 0.2463 | +0.003 | **WEAK** |
 
-Dixon-Coles on 1,125 EPL matches with 375 held out: home advantage 1.155, RPS
-**0.2149** against a published bar around 0.20.
+Sanity check on who the ratings put at the top — international football gives
+ESP, ARG, ENG, FRA, JPN, MAR; college football OSU, MIZ, MICH, FSU; MMA
+Makhachev, Ulberg, Van, Du Plessis. The ratings are sensible everywhere.
+
+**MMA barely predicts, and that is the point of having a gate.** Three
+thousandths of skill over 3,369 fights is nothing — fighters compete twice a
+year, style beats general strength, and one punch ends it. `scoring` returns
+WEAK rather than KEEP, which doubles the interval on an MMA estimate and shrinks
+the stake to match. The ratings are still worth showing; they are just not worth
+betting the way an NBA rating is.
+
+Dixon-Coles, checked separately against club-league matches (1,125 fitted, 375
+held out): home advantage 1.155, RPS **0.2149** against a published bar around
+0.20.
 
 Beating the base rate is real and modest. It is **not** the same as beating a
 bookmaker, who starts from a better price and charges the margin on top.
