@@ -19,11 +19,15 @@ football thirty years on, and it is three ideas (`MODELS.md` §4):
    by maximising out-of-sample predictive log-likelihood. Last season counts,
    but less.
 
-Fitted with no numeric libraries, because SONAR ships stdlib-only. That is not a
-compromise here: with only team indicators and a log link, the maximum-likelihood
-attack and defence strengths have a closed-form update given the others, so
-iterating them to convergence *is* the MLE rather than an approximation of it.
-Only `rho` needs a search, and it is one bounded parameter.
+Fitted with no numeric libraries, because SONAR ships stdlib-only. With only
+team indicators and a log link, each attack and defence strength has a
+closed-form update given the others, so iterating them to convergence finds the
+strengths' own maximum. Two simplifications keep it short of the full joint
+MLE, and are named rather than glossed: the home advantage is fixed at its
+moment estimate (the weighted home/away goals ratio) instead of being iterated
+with the strengths, and `rho` is fitted *after* them, so its small effect on
+the low-score likelihood never feeds back into the strengths. Both are
+second-order on a season of data; the held-out RPS is measured with them in.
 
 Like everything else in Playmaker, a probability from here reaches `staking`
 only through `scoring.calibrated_estimate()`.

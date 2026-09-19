@@ -99,6 +99,7 @@ class Table:
     config: EloConfig
     ratings: dict[str, Rating] = field(default_factory=dict)
     games: int = 0
+    draws: int = 0
 
     def get(self, team: str) -> Rating:
         return self.ratings.setdefault(team, Rating(self.config.base))
@@ -167,6 +168,8 @@ def update(table: Table, game: Game) -> tuple[float, float]:
         side.scored += own
         side.allowed += other
     table.games += 1
+    if table.config.draws and game.margin == 0:
+        table.draws += 1
     return before
 
 
@@ -220,9 +223,23 @@ def outcome_probabilities(table: Table, home: str, away: str,
     return (home_win * keep, draw_rate, (1.0 - home_win) * keep)
 
 
+#: Below this many fitted games the league's own draw count is more noise than
+#: measurement, and the football-typical default stands in.
+MIN_DRAW_SAMPLE = 50
+
+
 def observed_draw_rate(table: Table, default: float = 0.25) -> float:
-    """How often this league actually draws — measured, not assumed."""
-    return getattr(table, "draw_rate", default)
+    """How often this league actually draws — measured, not assumed.
+
+    `update()` counts draws as it fits, so a table that has seen a real season
+    answers with that league's own rate. Until it has seen `MIN_DRAW_SAMPLE`
+    games the default stands in — and the default is used, not hidden: an
+    earlier version of this function *claimed* to measure while always
+    returning the default, because nothing ever set the attribute it read.
+    """
+    if table.config.draws and table.games >= MIN_DRAW_SAMPLE:
+        return table.draws / table.games
+    return default
 
 
 def pythagorean(scored: float, allowed: float, exponent: float) -> float:

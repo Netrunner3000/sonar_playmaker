@@ -136,9 +136,13 @@ def score_predictions(pairs: list[tuple[float, float]]) -> Score:
     logloss = -sum(
         actual * math.log(_clamp(p)) + (1.0 - actual) * math.log(1.0 - _clamp(p))
         for p, actual in pairs) / n
-    hits = sum(1 for p, actual in pairs
-               if (p > 0.5) == (actual > 0.5) or actual == 0.5)
-    accuracy = hits / n
+    # Accuracy is a two-way question, so drawn games are left out of it rather
+    # than counted as hits — a draw-heavy league would otherwise inflate the
+    # number for free. Brier and log loss above score draws properly at 0.5,
+    # and they are what the verdict reads; accuracy is display only.
+    decided = [(p, actual) for p, actual in pairs if actual != 0.5]
+    hits = sum(1 for p, actual in decided if (p > 0.5) == (actual > 0.5))
+    accuracy = hits / len(decided) if decided else 0.0
 
     buckets = []
     for low, high in zip(BUCKETS, BUCKETS[1:]):
