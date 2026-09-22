@@ -30,6 +30,7 @@ quietly.
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 
 from . import staking
@@ -71,6 +72,8 @@ class Score:
     base_rate: float
     baseline_brier: float
     buckets: tuple[Bucket, ...] = field(default_factory=tuple)
+    #: Lower 95% bootstrap bound on `skill` — the number the KEEP bar reads.
+    skill_floor: float = 0.0
 
     @property
     def skill(self) -> float:
@@ -94,13 +97,21 @@ class Score:
 
     @property
     def verdict(self) -> str:
+        """KEEP only when the whole interval clears zero.
+
+        The bar used to be ``skill > 1/sqrt(games)`` — a shape-of-an-error-bar
+        rather than one, blind to the variance the sample actually has. The
+        bootstrap floor is measured from the per-game Brier differences
+        themselves, block-resampled because consecutive predictions share the
+        fitted table that priced them. "Positive on average but the interval
+        touches zero" is precisely WEAK: a reason to stake less, not a reason
+        to stake.
+        """
         if self.games < MIN_GAMES:
             return "INSUFFICIENT"
         if self.skill <= 0.0:
             return "DROP"
-        # Standard error of the Brier difference, approximated from the sample.
-        margin = 1.0 / math.sqrt(self.games)
-        return "KEEP" if self.skill > margin else "WEAK"
+        return "KEEP" if self.skill_floor > 0.0 else "WEAK"
 
     @property
     def summary(self) -> str:
@@ -155,7 +166,41 @@ def score_predictions(pairs: list[tuple[float, float]]) -> Score:
             predicted=sum(p for p, _ in inside) / len(inside),
             realised=sum(a for _, a in inside) / len(inside),
             count=len(inside)))
-    return Score(n, brier, logloss, accuracy, base_rate, baseline, tuple(buckets))
+    return Score(n, brier, logloss, accuracy, base_rate, baseline,
+                 buckets=tuple(buckets),
+                 skill_floor=_skill_floor(pairs, base_rate, baseline))
+
+
+def _skill_floor(pairs: list[tuple[float, float]], base_rate: float,
+                 baseline: float, reps: int = 800, block: int = 20,
+                 seed: int = 17) -> float:
+    """Lower 95% moving-block bootstrap bound on skill.
+
+    ``skill`` is exactly the mean of the per-game Brier differences
+    ``(base_rate − outcome)² − (p − outcome)²`` divided by the baseline Brier,
+    so resampling those differences resamples skill itself. Blocks rather
+    than single games for the same reason the research stats use them:
+    consecutive predictions share the fitted table, and resampling dependent
+    observations one at a time hands back an interval that is too narrow.
+    Seeded, because a verdict that changes between two identical runs is not
+    a measurement.
+    """
+    n = len(pairs)
+    if baseline <= 0 or n < 2 * block:
+        return 0.0
+    diffs = [(base_rate - a) ** 2 - (p - a) ** 2 for p, a in pairs]
+    rng = random.Random(seed)
+    nblocks = max(1, n // block)
+    means = []
+    for _ in range(reps):
+        total = count = 0.0
+        for _ in range(nblocks):
+            start = rng.randrange(0, n - block + 1)
+            total += sum(diffs[start:start + block])
+            count += block
+        means.append(total / count)
+    means.sort()
+    return means[int(0.025 * reps)] / baseline
 
 
 def walk_forward(games: list[Game], sport_key: str = "",
@@ -182,6 +227,40 @@ def walk_forward(games: list[Game], sport_key: str = "",
         update(table, game)
         previous = game.date
     return score_predictions(pairs)
+
+
+def measure(sport_key: str, seasons: int = 3,
+            games: list[Game] | None = None, progress=None) -> dict:
+    """Fetch a sport's history and score its rating walk-forward — the whole
+    measurement in one call, so the Lab tab can re-run it after a change
+    instead of the verdicts living only in a script's scrollback.
+
+    ``games`` injected means no network, which is how the tests hold this
+    honest; left to fetch, it pulls ``seasons`` years through the ESPN adapter
+    with all of `results.py`'s measured traps intact. The dict is UI-shaped:
+    the Score object rides along for anything that wants the buckets.
+    """
+    from . import results as results_mod
+    from .ratings import UNTUNED
+
+    if games is None:
+        if progress:
+            progress(f"fetching {seasons} seasons…")
+        games = results_mod.fetch_seasons(sport_key, seasons=seasons)
+    score = walk_forward(games, sport_key)
+    return {
+        "sport": sport_key,
+        "seasons": seasons,
+        "n_games": len(games),
+        "score": score,
+        "verdict": score.verdict,
+        "summary": score.summary,
+        "untuned": sport_key in UNTUNED,
+        "buckets": [
+            {"low": b.low, "high": b.high, "n": b.count,
+             "predicted": round(b.predicted, 3), "realised": round(b.realised, 3)}
+            for b in score.buckets],
+    }
 
 
 def calibrated_estimate(probability: float, score: Score,
