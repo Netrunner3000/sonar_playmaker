@@ -98,7 +98,7 @@ models and that the market sits above both.
 | `ratings.py` | **Elo** in FiveThirtyEight's published form — margin-of-victory scaling, the autocorrelation correction that stops strong teams' ratings running away, and between-season regression. Plus **Pythagorean expectation** as an independent cross-check, with published exponents only (a guessed one would make the check worse than useless). |
 | `poisson.py` | **Dixon-Coles (1997)** for football: attack and defence per team, the `tau` correction for the four lowest scorelines, and time decay at their own fitted `xi = 0.0065` per half-week. Fitted stdlib-only — with team indicators and a log link each strength's MLE given the others is closed form, so the fixed point *is* the maximum. |
 | `results.py` | The feed. One ESPN adapter over each sport's league codes, no key. `parse_scoreboard` reads a scoreline, `parse_bouts` reads a fight card (no home/away, no score — only a winner). |
-| `scoring.py` | The gate. Brier, log loss, calibration and a KEEP/WEAK/DROP verdict, all walk-forward. |
+| `scoring.py` | The gate. Brier, log loss, calibration and a KEEP/WEAK/DROP verdict, all walk-forward. `measure(sport_key, seasons, games=None)` fetches and scores a sport in one call, so a UI tab can re-run it after a change instead of the verdict living only in a script's scrollback. |
 
 Measured out of sample on real results:
 
@@ -120,6 +120,21 @@ year, style beats general strength, and one punch ends it. `scoring` returns
 WEAK rather than KEEP, which doubles the interval on an MMA estimate and shrinks
 the stake to match. The ratings are still worth showing; they are just not worth
 betting the way an NBA rating is.
+
+**The KEEP bar is a measured interval, not a shape-of-an-error-bar guess.** The
+verdict used to compare skill against `1/sqrt(games)` — an approximation that
+never actually measured the sample's real variance. It now compares against
+`skill_floor`, the lower bound of a 95% moving-block bootstrap over the
+per-game Brier differences (blocked, not single-game, because consecutive
+predictions share the fitted table that priced them): KEEP only when the whole
+interval clears zero, WEAK when skill is positive but the interval still
+touches zero. **Accuracy excludes draws** rather than counting them as free
+hits — Brier and log loss already score a draw properly at 0.5, and accuracy
+is display-only, so a draw-heavy league can no longer inflate it. And
+`ratings.observed_draw_rate()` now genuinely measures a league's own draw rate
+once it has fit at least 50 games (`MIN_DRAW_SAMPLE`) — previously the function
+claimed to measure it but always returned the default, since nothing ever set
+the attribute it read.
 
 Dixon-Coles, checked separately against club-league matches (1,125 fitted, 375
 held out): home advantage 1.155, RPS **0.2149** against a published bar around
